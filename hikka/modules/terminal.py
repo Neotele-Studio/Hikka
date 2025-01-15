@@ -35,6 +35,7 @@ from .. import loader, utils
 
 logger = logging.getLogger(__name__)
 
+import traceback
 
 def hash_msg(message):
     return f"{str(utils.get_chat_id(message))}/{str(message.id)}"
@@ -404,3 +405,51 @@ class TerminalMod(loader.Module):
                 await utils.answer(message, self.strings("killed"))
         else:
             await utils.answer(message, self.strings("no_cmd"))
+            
+    @loader.command()
+    async def neofetchcmd(self, message):
+        """Show system stats via neofetch"""
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "neofetch", "--stdout",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+    
+            stdout, stderr = await process.communicate()
+    
+            if process.returncode != 0:
+                await utils.answer(message, f"<b>Error:</b>\n{stderr.decode().strip()}")
+                return
+    
+            output = stdout.decode().strip()
+            await utils.answer(message, f"<pre>{utils.escape_html(output)}</pre>")
+          
+        except Exception:
+            await utils.answer(message, f"<b>Error:</b>\n<pre>{traceback.format_exc()}</pre>")
+            
+    @loader.command()
+    async def uptimecmd(self, message):
+        """Show system uptime"""
+        await self.run_command(
+            message,
+            "uptime",
+            RawMessageEditor(message, "uptime", self.config, self.strings, message),
+        )
+        
+    @loader.owner
+    async def killcmd(self, message):
+        """Use in reply to send SIGKILL to a process"""
+        if not message.is_reply:
+            await utils.answer(message, self.strings("what_to_kill", message))
+            return
+        if hash_msg(await message.get_reply_message()) in self.activecmds:
+            try:
+                self.activecmds[hash_msg(await message.get_reply_message())].kill()
+            except Exception:
+                logger.exception("Killing process failed")
+                await utils.answer(message, self.strings("kill_fail", message))
+            else:
+                await utils.answer(message, self.strings("killed", message))
+        else:
+            await utils.answer(message, self.strings("no_cmd", message))
